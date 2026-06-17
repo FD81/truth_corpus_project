@@ -1,0 +1,11 @@
+# Ignore all data files
+data/
+*.csv
+*.jsonl
+
+# Ignore Python cache
+__pycache__/
+.ipynb_checkpoints/
+
+# Ignore API keys (if you save them in a separate .env file)
+.env

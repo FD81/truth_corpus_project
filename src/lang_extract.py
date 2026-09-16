@@ -1,20 +1,25 @@
 import os
+user = os.environ["USER"]
+os.environ['HF_HOME'] = f'/user/home/{user}/storage/{user}/hf_home/'
 import json
 import time
 import pandas as pd
-from dotenv import load_dotenv
-from groq import Groq
 import langextract as lx
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import re
 
 # ==============================================================================
 # 1. CONFIGURATION
 # ==============================================================================
 MODEL_ID = "openai/gpt-oss-20b" 
-csv_path = r"C:\Users\Customer\OneDrive - University of Bristol\War as Discourse\Truth Corpus Scrape\Truth_Corpus_Project\data\combined_test_corpus.csv"
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-client = Groq(api_key=GROQ_API_KEY)
+csv_path = "../../combined_test_corpus.csv"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_ID,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    low_cpu_mem_usage=True
+)
 
 # ==============================================================================
 # 2. PROMPT
@@ -111,6 +116,7 @@ print(f"Starting run for {total_documents} documents...")
 for i, row in df.iterrows():
     document_start_time = time.time()
     text = row[mapping["content"]]
+    messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
     
     print(f"Analyzing Document {i}...", end=" ", flush=True)
     
@@ -118,15 +124,27 @@ for i, row in df.iterrows():
     retries = 3
     while not success and retries > 0:
         try:
-            completion = client.chat.completions.create(
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}],
-                model=MODEL_ID,
-                response_format={"type": "json_object"},
-                timeout=30.0
-            )
             
-            data = json.loads(completion.choices[0].message.content)
-            data = json.loads(completion.choices[0].message.content)
+            inputs = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+            ).to(model.device)
+            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                do_sample=False
+            )
+
+            input_len = inputs["input_ids"].shape[-1]
+            completion_text = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
+
+            match = re.search(r'\{.*\}', completion_text, re.DOTALL)
+            json_str = match.group(0) if match else completion_text
+
+            data = json.loads(json_str)
             about_iran = bool(data.get("about_iran", False))
             reason = data.get("reason", "")
             

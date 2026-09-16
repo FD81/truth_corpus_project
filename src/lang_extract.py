@@ -9,6 +9,7 @@ import langextract as lx
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import re
 import argparse
+import gc
 from config import MODEL_ID, CSV_PATH, SYSTEM_PROMPT
 
 # ==============================================================================

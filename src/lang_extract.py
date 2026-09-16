@@ -1,18 +1,18 @@
 import os
 user = os.environ["USER"]
 os.environ['HF_HOME'] = f'/user/home/{user}/storage/{user}/hf_home/'
+import torch
 import json
 import time
 import pandas as pd
 import langextract as lx
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import re
+from config import MODEL_ID, CSV_PATH, SYSTEM_PROMPT
 
 # ==============================================================================
 # 1. CONFIGURATION
 # ==============================================================================
-MODEL_ID = "openai/gpt-oss-20b" 
-csv_path = "../../combined_test_corpus.csv"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_ID,
@@ -25,46 +25,12 @@ model = AutoModelForCausalLM.from_pretrained(
 # 2. PROMPT
 # ==============================================================================
 
-system_prompt = """
-You are a specialized classification agent.
 
-Determine whether the supplied post is related to Iran.
-
-A post is related to Iran if it refers to:
-- Iran
-- Iranian actors
-- Tehran
-- the Islamic Republic of Iran
-- Iranian political or military leaders
-- the Ayatollah / Supreme Leader when referring to Iran
-- the IRGC / Iranian Revolutionary Guard
-- Iran's nuclear programme
-- military, diplomatic, political, or economic events involving Iran
-- Israel-Iran relations or conflict
-- US-Iran relations or conflict
-
-IMPORTANT:
-Return ONLY a JSON object with exactly these keys:
-
-{
-    "about_iran": true,
-    "reason": "short explanation"
-}
-
-or:
-
-{
-    "about_iran": false,
-    "reason": "short explanation"
-}
-
-Do NOT reproduce or modify the source text.
-"""
 
 # 3. DATA PREPARATION & SORTING
 # ==============================================================================
 print("Loading and preparing CSV...")
-df = pd.read_csv(csv_path)
+df = pd.read_csv(CSV_PATH)
 
 # --- FIX 1: CHRONOLOGICAL SORTING ---
 # Convert created_at to actual datetime objects so we can sort them correctly
@@ -116,7 +82,7 @@ print(f"Starting run for {total_documents} documents...")
 for i, row in df.iterrows():
     document_start_time = time.time()
     text = row[mapping["content"]]
-    messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": text}]
+    messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}]
     
     print(f"Analyzing Document {i}...", end=" ", flush=True)
     

@@ -9,4 +9,4 @@
 source ../initMamba.sh
 conda activate local_llm
 echo "Job Started"
-python src/lang_extract.py
+python src/lang_extract.py --chunk 0 --chunk-size 100

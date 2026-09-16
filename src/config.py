@@ -1,6 +1,6 @@
 MODEL_ID = "openai/gpt-oss-20b" 
 
-CSV_PATH = "../combined_test_corpus.csv"
+CSV_PATH = "data/combined_test_corpus.csv"
 
 SYSTEM_PROMPT = """
 You are a specialized classification agent.

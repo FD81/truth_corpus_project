@@ -1,6 +1,4 @@
 # Ignore all data files
-data/
-*.csv
 *.jsonl
 
 # Ignore Python cache

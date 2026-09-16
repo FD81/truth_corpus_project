@@ -88,6 +88,9 @@ for i, row in df.iterrows():
     
     success = False
     retries = 3
+    inputs = None
+    outputs = None
+
     while not success and retries > 0:
         try:
             
@@ -95,17 +98,22 @@ for i, row in df.iterrows():
                 messages,
                 add_generation_prompt=True,
                 return_tensors="pt",
+                return_dict=True,
             ).to(model.device)
-            inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=512,
-                do_sample=False
-            )
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=512,
+                    do_sample=False
+                )
 
             input_len = inputs["input_ids"].shape[-1]
             completion_text = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
+
+            del inputs, outputs
+            torch.cuda.empty_cache()
+            inputs, outputs = None, None
 
             match = re.search(r'\{.*\}', completion_text, re.DOTALL)
             json_str = match.group(0) if match else completion_text
@@ -186,6 +194,16 @@ for i, row in df.iterrows():
                 success = True
                 processed_count += 1
                 error_count += 1
+
+            if inputs is not None:
+                del inputs
+                inputs = None
+            if outputs is not None:
+                del outputs
+                outputs = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            e = None 
 
 run_elapsed = time.time() - run_start_time
 

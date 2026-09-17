@@ -8,8 +8,6 @@ import pandas as pd
 import langextract as lx
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import re
-import argparse
-import gc
 from config import MODEL_ID, CSV_PATH, SYSTEM_PROMPT
 
 # ==============================================================================
@@ -31,12 +29,6 @@ model = AutoModelForCausalLM.from_pretrained(
 
 # 3. DATA PREPARATION & SORTING
 # ==============================================================================
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--chunk", type=int, default=0)
-parser.add_argument("--chunk-size", type=int, default=5000)
-args = parser.parse_args()
-
 print("Loading and preparing CSV...")
 df = pd.read_csv(CSV_PATH)
 
@@ -44,13 +36,6 @@ df = pd.read_csv(CSV_PATH)
 # Convert created_at to actual datetime objects so we can sort them correctly
 df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
 df = df.sort_values(by='created_at', ascending=True) # Oldest to Newest
-
-start = args.chunk * args.chunk_size
-end = min(start + args.chunk_size, len(df))
-
-df = df.iloc[start:end]
-
-print(f"Processing chunk {args.chunk}: documents {start} to {end - 1}")
 
 # --- FIX 2: ROBUST COLUMN MAPPING ---
 # Some CSVs use 'url', some use 'URL'. We'll normalize them all to lowercase.
@@ -80,7 +65,7 @@ for target, source in mapping.items():
         df[source] = "N/A"
 
 all_results = []
-print("Done, move to processing documents...")
+print("Done, move to processing documents via Groq...")
 
 # ==============================================================================
 # 4. PROCESSING LOOP
@@ -358,8 +343,5 @@ def create_custom_viz(results, output_filename):
 # ==============================================================================
 # 5. EXECUTION
 # ==============================================================================
-create_custom_viz(
-    all_results,
-    f"trump_truth_visualization_chunk_{args.chunk}.html"
-)
+create_custom_viz(all_results, "trump_truth_visualization_1.3.html")
 print("SUCCESS: Visualization saved with chronological order and full metadata.")

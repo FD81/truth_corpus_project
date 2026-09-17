@@ -6,7 +6,7 @@
 #SBATCH --partition=gpu
 #SBATCH --time=1:00:00
 #SBATCH --output=experiment_%j.out
-#SBATCH --account=spai04060
+#SBATCH --account=spai040604
 
 source ../initMamba.sh
 conda activate local_llm

@@ -65,7 +65,7 @@ for target, source in mapping.items():
         df[source] = "N/A"
 
 all_results = []
-print("Done, move to processing documents via Groq...")
+print("Done, move to processing documents...")
 
 # ==============================================================================
 # 4. PROCESSING LOOP
@@ -340,8 +340,40 @@ def create_custom_viz(results, output_filename):
     with open(output_filename, "w", encoding="utf-8") as f:
         f.write(html_template)
 
+def save_results_csv(results, output_filename):
+    rows = []
+
+    for doc in results:
+        rows.append({
+            "document_id": doc.document_id,
+            "date": doc.metadata["date"],
+            "url": doc.metadata["url"],
+            "media": doc.metadata["media"],
+            "replies": doc.metadata["replies"],
+            "reblogs": doc.metadata["reblogs"],
+            "favourites": doc.metadata["favs"],
+            "content": doc.text,
+            "about_iran": doc.metadata["about_iran"],
+            "classification_reason": doc.metadata["classification_reason"],
+            "model": doc.metadata["model"]
+        })
+
+    pd.DataFrame(rows).to_csv(output_filename, index=False, encoding="utf-8-sig")
+        
+# ==============================================================================
+# 6. EXECUTION
+# ==============================================================================
 # ==============================================================================
 # 5. EXECUTION
 # ==============================================================================
-create_custom_viz(all_results, "trump_truth_visualization_1.3.html")
-print("SUCCESS: Visualization saved with chronological order and full metadata.")
+
+os.makedirs("output", exist_ok=True)
+
+html_output = os.path.join("output", "trump_truth_visualization_1.3.html")
+csv_output = os.path.join("output", "trump_truth_results_1.3.csv")
+
+create_custom_viz(all_results, html_output)
+save_results_csv(all_results, csv_output)
+
+print(f"SUCCESS: Visualization saved to {html_output}")
+print(f"SUCCESS: CSV results saved to {csv_output}")

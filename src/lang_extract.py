@@ -6,6 +6,7 @@ import json
 import time
 import pandas as pd
 import langextract as lx
+import gc
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import re
 from config import MODEL_ID, CSV_PATH, SYSTEM_PROMPT
@@ -237,18 +238,23 @@ print("=" * 60)
 # ==============================================================================
 def create_custom_viz(results, output_filename):
     viz_data = []
+
     for doc in results:
         # Format date for display (YYYY-MM-DD)
         date_str = str(doc.metadata["date"])
         clean_date = date_str.split('T')[0] if 'T' in date_str else date_str
-        
+
         viz_data.append({
             "id": doc.document_id,
             "metadata": {**doc.metadata, "date": clean_date},
             "text": doc.text,
             "extractions": [
-                {"class": ex.extraction_class, "text": ex.extraction_text, 
-                 "start": ex.char_interval["start_pos"], "end": ex.char_interval["end_pos"]}
+                {
+                    "class": ex.extraction_class,
+                    "text": ex.extraction_text,
+                    "start": ex.char_interval["start_pos"],
+                    "end": ex.char_interval["end_pos"]
+                }
                 for ex in doc.extractions
             ]
         })
@@ -259,84 +265,366 @@ def create_custom_viz(results, output_filename):
     <head>
         <meta charset="UTF-8">
         <title>Iran Analysis - Detailed Visualization</title>
+
         <style>
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 40px; color: #333; }}
-            .container {{ max-width: 1100px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }}
-            .header {{ text-align: center; margin-bottom: 20px; }}
-            .meta-panel {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; background: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px; font-size: 14px; }}
-            .meta-item {{ display: flex; flex-direction: column; }}
-            .meta-label {{ font-weight: bold; color: #666; font-size: 12px; text-transform: uppercase; }}
-            .meta-value {{ color: #1a73e8; text-decoration: none; word-break: break-all; }}
-            .text-window {{ font-size: 18px; line-height: 1.6; padding: 20px; border: 1px solid #ddd; border-radius: 10px; white-space: pre-wrap; margin-bottom: 20px; min-height: 200px; background: #fff; }}
-            .highlight {{ background-color: #fff59d; border-bottom: 3px solid #fbc02d; cursor: pointer; font-weight: bold; position: relative; }}
-            .highlight:hover::after {{ content: attr(data-label); position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; z-index: 10; }}
-            .controls {{ display: flex; justify-content: center; align-items: center; gap: 20px; margin-top: 20px; }}
-            button {{ padding: 10px 20px; font-size: 16px; cursor: pointer; background: #1a73e8; color: white; border: none; border-radius: 5px; }}
-            button:disabled {{ background: #ccc; }}
-            .status {{ text-align: center; font-size: 14px; color: #888; margin-top: 10px; }}
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: #f0f2f5;
+                padding: 40px;
+                color: #333;
+            }}
+
+            .container {{
+                max-width: 1100px;
+                margin: auto;
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            }}
+
+            .header {{
+                text-align: center;
+                margin-bottom: 20px;
+            }}
+
+            .filter-controls {{
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                margin-bottom: 20px;
+            }}
+
+            .filter-btn {{
+                background: #e9ecef;
+                color: #333;
+            }}
+
+            .filter-btn.active {{
+                background: #1a73e8;
+                color: white;
+            }}
+
+            .meta-panel {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 15px;
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 10px;
+                border: 1px solid #ddd;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }}
+
+            .meta-item {{
+                display: flex;
+                flex-direction: column;
+            }}
+
+            .meta-label {{
+                font-weight: bold;
+                color: #666;
+                font-size: 12px;
+                text-transform: uppercase;
+            }}
+
+            .meta-value {{
+                color: #1a73e8;
+                text-decoration: none;
+                word-break: break-all;
+            }}
+
+            .text-window {{
+                font-size: 18px;
+                line-height: 1.6;
+                padding: 20px;
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                white-space: pre-wrap;
+                margin-bottom: 20px;
+                min-height: 200px;
+                background: #fff;
+            }}
+
+            .highlight {{
+                background-color: #fff59d;
+                border-bottom: 3px solid #fbc02d;
+                cursor: pointer;
+                font-weight: bold;
+                position: relative;
+            }}
+
+            .highlight:hover::after {{
+                content: attr(data-label);
+                position: absolute;
+                bottom: 125%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #333;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                z-index: 10;
+            }}
+
+            .controls {{
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 20px;
+                margin-top: 20px;
+            }}
+
+            button {{
+                padding: 10px 20px;
+                font-size: 16px;
+                cursor: pointer;
+                background: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }}
+
+            button:disabled {{
+                background: #ccc;
+            }}
+
+            .status {{
+                text-align: center;
+                font-size: 14px;
+                color: #888;
+                margin-top: 10px;
+            }}
         </style>
     </head>
+
     <body>
         <div class="container">
-            <div class="header"><h2>Iran Attributions Analysis</h2></div>
+
+            <div class="header">
+                <h2>Iran Attributions Analysis</h2>
+            </div>
+
+            <div class="filter-controls">
+                <button
+                    id="allBtn"
+                    class="filter-btn active"
+                    onclick="setFilter('all')">
+                    All Documents
+                </button>
+
+                <button
+                    id="iranBtn"
+                    class="filter-btn"
+                    onclick="setFilter('iran')">
+                    Iran Related
+                </button>
+            </div>
+
             <div class="meta-panel" id="metaPanel">
-                <div class="meta-item"><span class="meta-label">Date</span><span id="mDate" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">URL</span><a id="mUrl" class="meta-value" target="_blank">---</a></div>
-                <div class="meta-item"><span class="meta-label">Media</span><a id="mMedia" class="meta-value" target="_blank">---</a></div>
-                <div class="meta-item"><span class="meta-label">Replies</span><span id="mReplies" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">Reblogs</span><span id="mReblogs" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">Favourites</span><span id="mFavs" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">Iran Related</span><span id="mIran" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">Classification Reason</span><span id="mReason" class="meta-value">---</span></div>
-                <div class="meta-item"><span class="meta-label">Model</span><span id="mModel" class="meta-value">---</span></div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Date</span>
+                    <span id="mDate" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">URL</span>
+                    <a id="mUrl" class="meta-value" target="_blank">---</a>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Media</span>
+                    <a id="mMedia" class="meta-value" target="_blank">---</a>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Replies</span>
+                    <span id="mReplies" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Reblogs</span>
+                    <span id="mReblogs" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Favourites</span>
+                    <span id="mFavs" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Iran Related</span>
+                    <span id="mIran" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Classification Reason</span>
+                    <span id="mReason" class="meta-value">---</span>
+                </div>
+
+                <div class="meta-item">
+                    <span class="meta-label">Model</span>
+                    <span id="mModel" class="meta-value">---</span>
+                </div>
+
             </div>
-            <div id="textWindow" class="text-window">Loading...</div>
+
+            <div id="textWindow" class="text-window">
+                Loading...
+            </div>
+
             <div class="controls">
-                <button id="prevBtn" onclick="changeDoc(-1)">Previous</button>
-                <button id="nextBtn" onclick="changeDoc(1)">Next</button>
+                <button id="prevBtn" onclick="changeDoc(-1)">
+                    Previous
+                </button>
+
+                <button id="nextBtn" onclick="changeDoc(1)">
+                    Next
+                </button>
             </div>
-            <div id="status" class="status">Document 0 of 0</div>
+
+            <div id="status" class="status">
+                Document 0 of 0
+            </div>
+
         </div>
+
         <script>
             const data = {json.dumps(viz_data)};
+
+            let filteredData = data;
             let currentIndex = 0;
-            function renderDoc() {{
-                if (data.length === 0) return;
-                const doc = data[currentIndex];
-                document.getElementById('mDate').innerText = doc.metadata.date;
-                document.getElementById('mUrl').innerText = doc.metadata.url;
-                document.getElementById('mUrl').href = doc.metadata.url.startsWith('http') ? doc.metadata.url : '#';
-                document.getElementById('mMedia').innerText = doc.metadata.media;
-                document.getElementById('mMedia').href = doc.metadata.media.startsWith('http') ? doc.metadata.media : '#';
-                document.getElementById('mReplies').innerText = doc.metadata.replies;
-                document.getElementById('mReblogs').innerText = doc.metadata.reblogs;
-                document.getElementById('mFavs').innerText = doc.metadata.favs;
-                document.getElementById('mIran').innerText = doc.metadata.about_iran ? "YES" : "NO"; 
-                document.getElementById('mReason').innerText = doc.metadata.classification_reason || "---";
-                document.getElementById('mModel').innerText = doc.metadata.model || "---";
-                let text = doc.text;
-                const sortedEx = [...doc.extractions].sort((a, b) => b.start - a.start);
-                let highlightedText = text;
-                sortedEx.forEach(ex => {{
-                    const before = highlightedText.substring(0, ex.start);
-                    const target = highlightedText.substring(ex.start, ex.end);
-                    const after = highlightedText.substring(ex.end);
-                    highlightedText = `${{before}}<span class="highlight" data-label="${{ex.class}}">${{target}}</span>${{after}}`;
-                }});
-                document.getElementById('textWindow').innerHTML = highlightedText || "(Empty Document)";
-                document.getElementById('status').innerText = `Document ${{currentIndex + 1}} of ${{data.length}}`;
-                document.getElementById('prevBtn').disabled = (currentIndex === 0);
-                document.getElementById('nextBtn').disabled = (currentIndex === data.length - 1);
+            let currentFilter = 'all';
+
+            function setFilter(filter) {{
+                currentFilter = filter;
+
+                if (filter === 'iran') {{
+                    filteredData = data.filter(
+                        doc => doc.metadata.about_iran === true
+                    );
+                }} else {{
+                    filteredData = data;
+                }}
+
+                currentIndex = 0;
+
+                document.getElementById('allBtn').classList.toggle(
+                    'active',
+                    filter === 'all'
+                );
+
+                document.getElementById('iranBtn').classList.toggle(
+                    'active',
+                    filter === 'iran'
+                );
+
+                renderDoc();
             }}
+
+            function renderDoc() {{
+                if (filteredData.length === 0) {{
+                    document.getElementById('textWindow').innerText =
+                        "No documents in this view.";
+
+                    document.getElementById('status').innerText =
+                        "Document 0 of 0";
+
+                    document.getElementById('prevBtn').disabled = true;
+                    document.getElementById('nextBtn').disabled = true;
+
+                    return;
+                }}
+
+                const doc = filteredData[currentIndex];
+
+                document.getElementById('mDate').innerText =
+                    doc.metadata.date;
+
+                document.getElementById('mUrl').innerText =
+                    doc.metadata.url;
+
+                document.getElementById('mUrl').href =
+                    doc.metadata.url.startsWith('http')
+                    ? doc.metadata.url
+                    : '#';
+
+                document.getElementById('mMedia').innerText =
+                    doc.metadata.media;
+
+                document.getElementById('mMedia').href =
+                    doc.metadata.media.startsWith('http')
+                    ? doc.metadata.media
+                    : '#';
+
+                document.getElementById('mReplies').innerText =
+                    doc.metadata.replies;
+
+                document.getElementById('mReblogs').innerText =
+                    doc.metadata.reblogs;
+
+                document.getElementById('mFavs').innerText =
+                    doc.metadata.favs;
+
+                document.getElementById('mIran').innerText =
+                    doc.metadata.about_iran ? "YES" : "NO";
+
+                document.getElementById('mReason').innerText =
+                    doc.metadata.classification_reason || "---";
+
+                document.getElementById('mModel').innerText =
+                    doc.metadata.model || "---";
+
+                let text = doc.text;
+
+                const sortedEx = [...doc.extractions].sort(
+                    (a, b) => b.start - a.start
+                );
+
+                let highlightedText = text;
+
+                sortedEx.forEach(ex => {{
+                    const before =
+                        highlightedText.substring(0, ex.start);
+
+                    const target =
+                        highlightedText.substring(ex.start, ex.end);
+
+                    const after =
+                        highlightedText.substring(ex.end);
+
+                    highlightedText =
+                        `${{before}}<span class="highlight" data-label="${{ex.class}}">${{target}}</span>${{after}}`;
+                }});
+
+                document.getElementById('textWindow').innerHTML =
+                    highlightedText || "(Empty Document)";
+
+                document.getElementById('status').innerText =
+                    `Document ${{currentIndex + 1}} of ${{filteredData.length}}`;
+
+                document.getElementById('prevBtn').disabled =
+                    (currentIndex === 0);
+
+                document.getElementById('nextBtn').disabled =
+                    (currentIndex === filteredData.length - 1);
+            }}
+
             function changeDoc(dir) {{
                 currentIndex += dir;
                 renderDoc();
             }}
+
             renderDoc();
         </script>
+
     </body>
-    </html>S
+    </html>
     """
+
     with open(output_filename, "w", encoding="utf-8") as f:
         f.write(html_template)
 
@@ -363,14 +651,11 @@ def save_results_csv(results, output_filename):
 # ==============================================================================
 # 6. EXECUTION
 # ==============================================================================
-# ==============================================================================
-# 5. EXECUTION
-# ==============================================================================
 
 os.makedirs("output", exist_ok=True)
 
-html_output = os.path.join("output", "trump_truth_visualization_1.3.html")
-csv_output = os.path.join("output", "trump_truth_results_1.3.csv")
+html_output = os.path.join("output", "trump_truth_visualization.html")
+csv_output = os.path.join("output", "trump_truth_results.csv")
 
 create_custom_viz(all_results, html_output)
 save_results_csv(all_results, csv_output)

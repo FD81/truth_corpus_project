@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=experiment
-#SBATCH --gres=gpu:rtx_3090:4
-#SBATCH --partition gpu
+#SBATCH --nodelist=bp1-gpu030,bp1-gpu035
+#SBATCH --gres=gpu:4
+#SBATCH --partition=gpu
 #SBATCH --time=1:00:00
 #SBATCH --output=experiment_%j.out
 #SBATCH --account=spai040604
